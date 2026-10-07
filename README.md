@@ -2,59 +2,78 @@
 
 面向小米澎湃 OS 2 `com.xiaomi.misettings` 的 LSPosed 显示覆盖模块。逆向基线：`15.00.0722.01-phone` / versionCode `250722130`（Android 15，HyperOS 2.0.211.0）。
 
-> 开发阶段，默认关闭。只修改页面展示副本，不改 Room / MMKV / UsageStats 原始数据。版本不匹配时不注册任何业务 Hook。
+> 开发阶段，默认关闭。设计目标是只修改页面模型副本。已通过 Debug 云构建，尚未验证安装、Hook 命中、跨进程配置或实际页面行为。
 
-## 当前阶段：v0.1（首次云构建 + 待真机验证）
+## 已确认的云构建
 
-已实现：
+[GitHub Actions #38](https://github.com/Ko-Song/MiSettings-ScreenTime-LSPosed/actions/runs/37641425221) 的 API 结论为 `success`，编译、打包和 Artifact 上传步骤全部成功。
 
-- 传统 Xposed 入口（API 82），作用域仅 `com.xiaomi.misettings` 默认主进程，`Application.attach` 后做版本守卫；
-- H01 首页：`u9.h.invoke(Object)` 前置替换 `List<GroupItem>`（`ChartItem(c9.c$d)`、`AppTop4Item`）；
-- H02 详情：`e9.a0.e(DetailPageModel)` 前置替换页面模型副本，接收者限定 `ma.h0`，由宿主重新计算图表、Top4 与“查看全部”入口；
-- 设备时长、解锁分桶、已有应用条目的时长覆盖与隐藏；
-- 配置经自有 ContentProvider 提供给目标进程，目标进程异步刷新不可变快照；
-- 日志优先写用户选择的 SAF 目录，失败回退 App 私有目录，7 天清理；
-- Compose Miuix 配置界面；GitHub Actions 只构建 Debug。
+| 项目 | 记录 |
+|---|---|
+| 源码提交 | `afd21d1bf1d0335786a1a0e0b2078dd003b0c7e9` |
+| Artifact | `MiSettings-ScreenTime-LSPosed-debug-38` |
+| Artifact ID | `11491523971` |
+| Artifact 大小 | 10,707,702 字节（约 10.2 MiB） |
+| 工作流指定的 APK 文件名 | `MiSettings-ScreenTime-LSPosed-v0.1.38-debug.apk` |
+| 按构建配置生成的版本 | `versionName=0.1.38-debug`，`versionCode=10038` |
+| Artifact SHA-256 | `93424081a25e4df1fe6614d405e545b282736808eb580a5e2bb4e7895a2813d5` |
 
-未覆盖 / 待验证：
+登录 GitHub 后可在运行页面的 Artifacts 区域下载。上述摘要由 GitHub 返回，属于 Artifact，不是已独立校验的 APK 摘要。没有构建 Release 或发布 GitHub Release。
 
-- `DetailPageModel.copy` 为运行时结构推断（类正文未逆向），推断失败会原样回退并写日志；
-- “查看更多应用”完整列表、单应用 / 分类详情页；
-- 列表中原本不存在的应用无法凭空新增；
-- 快速切换日期的异步竞态、跨日、缓存热命中；
-- 以上全部尚未真机验证。
+## 当前代码
+
+- 传统 Xposed 入口（API 82），目标为 `com.xiaomi.misettings` 默认主进程，`Application.attach` 后检查 versionCode 和 versionName；
+- H01 首页：`u9.h.invoke(Object)` 前置替换列表中的目标模型副本；
+- H02 详情：`e9.a0.e(DetailPageModel)` 前置替换页面模型副本，接收者限定 `ma.h0`，保留宿主列表组装过程；
+- 设备时长、解锁分桶、已有应用条目的时长和隐藏规则；
+- ContentProvider 配置接口、目标进程异步配置快照及变更监听；
+- 日志优先写所选 SAF 目录，失败回退私有目录；自动清理目前只覆盖私有目录中过期 7 天的日志；
+- Compose Miuix 配置界面；GitHub Actions 仅执行 `assembleDebug`。
+
+## 待补证和已知限制
+
+- `DetailPageModel` 类正文尚未归档。目前 copy/getter 按运行时结构匹配，失败回退；需要完整 Smali（字段、构造、copy、getter）确定精确接口。
+- 两个核心 Hook 不覆盖“查看更多应用”完整列表、单应用或分类深入详情，也不能为原列表中不存在的应用新增条目。
+- 日期/周期控制、快速切换请求的日期归属、跨日、缓存热命中及跨页面一致性尚未完成验收；不能仅凭桶数保证日/周/月语义正确。
+- 未填写分桶时，总值规则会把数值放在最后一个桶，其余桶归零。`firstTime` 和 `lastCycle` 仍保留原值，解锁首次时间可能与新分布不一致，后续需要修正。
+- 配置通知刷新快照，不会主动重绘停留中的页面。首次异步读取前默认关闭；后续读取失败会保留上一次快照。
+- 日志查看、导出、容量限制、SAF 清理和有界日志队列尚未完成。
+- LiquidGlass、Shapes 尚未集成；目前是使用 Miuix 库的 Android Compose 工程。
+- 所有 Hook 行为尚未进行 LSPosed 真机测试，构建成功不代表功能已生效。
 
 ## 构建
 
-GitHub Actions：JDK 17 + Android SDK Platform 37.0 + Build Tools 36.0.0 + Gradle 8.13（`gradle/actions/setup-gradle`，仓库不提交 wrapper jar）。版本号来自 `GITHUB_RUN_NUMBER`：`versionCode = 10000 + run`，`versionName = 0.1.<run>-debug`。产物在 Actions 页面的 Artifact 中。
+云端使用 JDK 17、Android SDK Platform 37.0、Build Tools 36.0.0 和 Gradle 8.13。SDK 初始化使用 `android-actions/setup-android@v4`，Gradle 由 `gradle/actions/setup-gradle` 安装。云构建不依赖 Gradle Wrapper。
 
-本地构建需自行安装 Gradle 8.13：
+版本号来自 `GITHUB_RUN_NUMBER`：`versionCode = 10000 + run`，`versionName = 0.1.<run>-debug`。
+
+本地如需构建，请安装上述工具链后运行：
 
 ```bash
 gradle assembleDebug
 ```
 
-如需连续覆盖安装，配置固定 Debug keystore 环境变量（`DEBUG_KEYSTORE_PATH` 等）；不要把 `.jks`、密码或设备日志提交到仓库。
+Gradle 支持 `DEBUG_KEYSTORE_PATH`、`DEBUG_KEYSTORE_PASSWORD`、`DEBUG_KEY_ALIAS`、`DEBUG_KEY_PASSWORD`，当前工作流尚未接入这些签名变量。临时 runner 的默认 Debug 签名不保证每次相同，连续覆盖安装需要先配置固定签名。密钥、密码和设备日志不提交到源码仓库。
 
-## 使用
+## 后续验证顺序
 
-1. 安装 Debug APK，在 LSPosed 中启用，作用域勾选“小米设置”。
-2. 打开模块 App，开启总开关和需要的规则，点“保存并应用”。
-3. 强制停止小米设置后进入“健康使用手机”。
-4. 查看 LSPosed 日志（标签 `MiSettingsST`）和模块日志。
+1. 补齐同版本 APK 的 `DetailPageModel`，核对复制接口，记录 LSPosed Manager/Framework 版本。
+2. 修正规则一致性和日志问题，生成对应 Debug 构建。
+3. 真机先保持总开关关闭，确认模块 App 启动、配置保存和宿主页面正常。
+4. 启用 LSPosed 作用域，按框架要求重启目标进程，检查 Hook 注册和命中日志。
+5. 一次启用一个固定规则，验证显示、刷新、关闭恢复，再扩大到周期和子页面。
 
-## 配置格式
+## 配置格式（当前草稿）
 
-- 设备分桶：分钟，逗号分隔，个数必须与宿主桶数一致（日 24、周 7、月按自然月天数），否则规则被拒绝；
-- 设备总时长：分钟，未填写分桶时放入最后一个桶；
-- 解锁分桶 / 总次数：同上，单位为次；
-- 应用规则：每行 `包名=分钟`；
-- 隐藏包名：逗号或换行分隔；
-- 生效时段：本地时间分钟数（0–1440），开始等于结束表示全天。
+- 设备分桶为分钟，解锁分桶为次数，逗号分隔；长度必须与当前宿主模型相同。
+- 首页图表是七日分布，详情日模式通常为 24 小时；月模式可能为滚动 30 日或自然月 28/29/30/31 日。
+- 分桶非空时使用分桶合计；总值输入仅在分桶为空时使用。
+- 应用规则：每行 `包名=分钟`；隐藏包名：逗号或换行分隔。
+- 生效时段为本地时间分钟数（0–1440），起止相等表示全天；它不是统计日期筛选。
 
 ## 逆向依据
 
-逆向档案不放进仓库。实现依据为本地 `MiSettings-Reverse-250722130` 中的 `REVERSE_REPORT.md`、`HANDOFF.md`、`indexes/hook-contract.json`。
+原始逆向档案保留在本地 `MiSettings-Reverse-250722130`，不上传到公开源码仓库。依据为其中的 `REVERSE_REPORT.md`、`HANDOFF.md`、`indexes/hook-contract.json`。
 
 ## 许可
 
