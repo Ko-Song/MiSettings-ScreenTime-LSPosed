@@ -40,7 +40,26 @@ jobs:
           gradle-version: ${{ env.GRADLE_VERSION }}
 
       - name: Test model contracts
-        run: gradle --no-daemon --stacktrace testDebugUnitTest
+        id: model-tests
+        continue-on-error: true
+        run: |
+          set +e
+          gradle --no-daemon --stacktrace testDebugUnitTest
+          status=$?
+          echo "Model test exit code: ${status}"
+          find app/build/test-results app/build/reports/tests -type f -maxdepth 8 -print 2>/dev/null || true
+          exit ${status}
+
+      - name: Upload model test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiSettings-ScreenTime-model-test-reports-${{ github.run_number }}
+          path: |
+            app/build/test-results/testDebugUnitTest/**
+            app/build/reports/tests/testDebugUnitTest/**
+            app/build/reports/problems/**
+          if-no-files-found: warn
 
       - name: Build Debug APK
         run: gradle --no-daemon --stacktrace assembleDebug
@@ -58,3 +77,7 @@ jobs:
           name: MiSettings-ScreenTime-LSPosed-debug-${{ github.run_number }}
           path: build_output/*.apk
           if-no-files-found: error
+
+      - name: Fail after preserving reports
+        if: steps.model-tests.outcome == 'failure'
+        run: exit 1
