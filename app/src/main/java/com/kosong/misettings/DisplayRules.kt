@@ -1,6 +1,5 @@
 package com.kosong.misettings
 
-import java.lang.reflect.Method
 import java.util.Calendar
 
 /**
@@ -67,15 +66,8 @@ object DisplayRules {
         val newDetails = invokeCopy(
             details,
             arrayOf(newDevice, newNameAndCategory, newUnlock),
-        ) ?: run {
-            log("detail model fallback: ScreenTimeDetails.copy unavailable")
-            return input
-        }
+        )
         val newPage = copyDetailPageModel(input, newDetails)
-        if (newPage == null) {
-            log("detail model fallback: DetailPageModel.copy unavailable")
-            return input
-        }
         log("detail page model transformed")
         return newPage
     }
@@ -144,7 +136,7 @@ object DisplayRules {
                 invokeNoArg(item, "getBusiness"),
                 invokeNoArg(item, "getGroup"),
             ),
-        ) ?: item
+        )
     }
 
     private fun transformTop4Progress(item: Any, config: ModuleConfig, log: (String) -> Unit): Any {
@@ -161,7 +153,7 @@ object DisplayRules {
                 invokeNoArg(item, "getTop4Type"),
                 invokeNoArg(item, "getGroup"),
             ),
-        ) ?: item
+        )
     }
 
     private fun transformAppTop4(item: Any, config: ModuleConfig, log: (String) -> Unit): Any {
@@ -172,7 +164,7 @@ object DisplayRules {
         return invokeCopy(
             item,
             arrayOf(newList, invokeNoArg(item, "getGroup")),
-        ) ?: item
+        )
     }
 
     private fun transformNameCategoryDetails(
@@ -187,7 +179,7 @@ object DisplayRules {
         val newCategory = category?.let { transformNameCategoryList(it, config, log, allowHide) }
         if (newApp === app && newCategory === category) return details
 
-        return invokeCopy(details, arrayOf(newApp, newCategory)) ?: details
+        return invokeCopy(details, arrayOf(newApp, newCategory))
     }
 
     private fun transformNameCategoryList(
@@ -235,25 +227,21 @@ object DisplayRules {
                             invokeNoArg(detail, "getKeywords"),
                         ),
                     )
-                    val newEntry = newDetail?.let {
-                        invokeCopy(
-                            entry,
-                            arrayOf(
-                                it,
-                                invokeNoArg(entry, "getPackageName"),
-                                invokeNoArg(entry, "getCategoryType"),
-                                invokeNoArg(entry, "getCategoryId"),
-                                invokeNoArg(entry, "getAppType"),
-                                invokeNoArg(entry, "getGroup"),
-                                invokeNoArg(entry, "getPressEffect"),
-                            ),
-                        )
-                    }
-                    if (newEntry != null) {
-                        output += newEntry
-                        touched = true
-                        continue
-                    }
+                    val newEntry = invokeCopy(
+                        entry,
+                        arrayOf(
+                            newDetail,
+                            invokeNoArg(entry, "getPackageName"),
+                            invokeNoArg(entry, "getCategoryType"),
+                            invokeNoArg(entry, "getCategoryId"),
+                            invokeNoArg(entry, "getAppType"),
+                            invokeNoArg(entry, "getGroup"),
+                            invokeNoArg(entry, "getPressEffect"),
+                        ),
+                    )
+                    output += newEntry
+                    touched = true
+                    continue
                 }
             }
             output += entry
@@ -329,7 +317,7 @@ object DisplayRules {
                 average,
                 invokeNoArg(details, "getLastCycle"),
             ),
-        ) ?: details
+        )
     }
 
     private fun transformUnlockDetails(
@@ -391,7 +379,7 @@ object DisplayRules {
                 average,
                 invokeNoArg(details, "getLastCycle"),
             ),
-        ) ?: details
+        )
     }
 
     private fun isActive(config: ModuleConfig): Boolean {
@@ -473,73 +461,12 @@ object DisplayRules {
         values.fold(0L) { accumulator, value -> Math.addExact(accumulator, value) }
     }.getOrNull()
 
-    private fun invokeNoArg(target: Any, name: String): Any? = runCatching {
-        target.javaClass.methods.firstOrNull { method ->
-            method.name == name && method.parameterCount == 0
-        }?.invoke(target)
-    }.getOrNull()
+    // All copy signatures come from the supplied Smali, resolved in the host ClassLoader.
+    // Reflection failures propagate to ModuleHook, which keeps the original input unchanged.
+    private fun invokeNoArg(target: Any, name: String): Any? = HostModels.read(target, name)
 
-    /**
-     * DetailPageModel 正文不在逆向档案中。已知合成构造为
-     * (VisualHealthDetails, ScreenTimeDetails, c9.b, int mask, marker)，
-     * 因此普通构造/copy 推定为 3 个业务参数，但这里不硬编码参数个数和顺序：
-     *
-     * 1. 只接受唯一一个返回本类、且恰有一个参数可接收 ScreenTimeDetails 的 copy；
-     * 2. 其余参数按“返回类型完全相同的唯一无参 getter”从原对象取值；
-     * 3. 任一步不唯一就返回 null，调用方保留宿主原始模型。
-     */
-    private fun copyDetailPageModel(original: Any, newScreenTimeDetails: Any): Any? {
-        val modelClass = original.javaClass
-        val copies = modelClass.methods.filter { method ->
-            method.name == "copy" &&
-                method.returnType == modelClass &&
-                method.parameterTypes.count { it.isAssignableFrom(newScreenTimeDetails.javaClass) } == 1
-        }
-        if (copies.size != 1) return null
-        val copyMethod = copies.single()
+    private fun copyDetailPageModel(original: Any, newScreenTimeDetails: Any): Any =
+        HostModels.copyDetailPage(original, newScreenTimeDetails)
 
-        val getters: List<Method> = modelClass.methods.filter { method ->
-            method.parameterCount == 0 &&
-                method.name != "getClass" &&
-                (method.name.startsWith("get") || method.name.startsWith("is"))
-        }
-
-        val arguments = arrayOfNulls<Any?>(copyMethod.parameterCount)
-        for ((index, type) in copyMethod.parameterTypes.withIndex()) {
-            if (type.isAssignableFrom(newScreenTimeDetails.javaClass)) {
-                arguments[index] = newScreenTimeDetails
-                continue
-            }
-            val matches = getters.filter { it.returnType == type }
-            if (matches.size != 1) return null
-            // VisualHealthDetails 在屏幕时长详情中通常为 null，保留原值即可。
-            arguments[index] = runCatching { matches.single().invoke(original) }
-                .getOrElse { return null }
-        }
-        return runCatching { copyMethod.invoke(original, *arguments) }.getOrNull()
-    }
-
-    private fun invokeCopy(target: Any, args: Array<Any?>): Any? {
-        val candidates = target.javaClass.methods.filter { candidate ->
-            candidate.name == "copy" && candidate.parameterCount == args.size &&
-                candidate.parameterTypes.indices.all { index ->
-                    val value = args[index]
-                    value == null || boxed(candidate.parameterTypes[index]).isInstance(value)
-                }
-        }
-        if (candidates.size != 1) return null
-        return runCatching { candidates.single().invoke(target, *args) }.getOrNull()
-    }
-
-    private fun boxed(type: Class<*>): Class<*> = when (type) {
-        java.lang.Boolean.TYPE -> java.lang.Boolean::class.java
-        java.lang.Byte.TYPE -> java.lang.Byte::class.java
-        java.lang.Character.TYPE -> java.lang.Character::class.java
-        java.lang.Short.TYPE -> java.lang.Short::class.java
-        java.lang.Integer.TYPE -> java.lang.Integer::class.java
-        java.lang.Long.TYPE -> java.lang.Long::class.java
-        java.lang.Float.TYPE -> java.lang.Float::class.java
-        java.lang.Double.TYPE -> java.lang.Double::class.java
-        else -> type
-    }
+    private fun invokeCopy(target: Any, args: Array<Any?>): Any = HostModels.copy(target, args)
 }

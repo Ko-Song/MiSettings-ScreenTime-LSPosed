@@ -75,12 +75,12 @@ class ModuleHook : IXposedHookLoadPackage {
 
     /**
      * H02：在 e9.a0.e(DetailPageModel) 执行前替换入参为页面模型副本，
-     * 让宿主原方法重新生成 ChartItem / Top4 / “查看全部”入口。
+     * 让宿主原方法重新生成 ChartItem / Top4 /“查看全部”入口。
      * DetailPageModel.copy 结构不符合预期时 DisplayRules 返回原对象，即原样回退。
      */
     private fun hookDetailModel(classLoader: ClassLoader) {
         val baseClass = XposedHelpers.findClass("e9.a0", classLoader)
-        val modelClass = XposedHelpers.findClass(DETAIL_PAGE_MODEL_CLASS, classLoader)
+        val modelClass = HostModels.verifyDetailPage(classLoader)
         val receiverClass = XposedHelpers.findClass(DETAIL_VIEW_MODEL_CLASS, classLoader)
         XposedHelpers.findAndHookMethod(
             baseClass,
@@ -175,7 +175,6 @@ class ModuleHook : IXposedHookLoadPackage {
     private companion object {
         const val TAG = "MiSettingsST"
         const val HOME_PAGE_CLASS = "com.xiaomi.misettings.features.HomePage"
-        const val DETAIL_PAGE_MODEL_CLASS = "com.xiaomi.misettings.base.model.page.DetailPageModel"
         const val DETAIL_VIEW_MODEL_CLASS = "ma.h0"
     }
 }

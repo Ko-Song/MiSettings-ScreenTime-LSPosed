@@ -39,8 +39,8 @@ jobs:
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
 
-      - name: Build Debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
+      - name: Test model contracts and build Debug APK
+        run: gradle --no-daemon --stacktrace testDebugUnitTest assembleDebug
 
       - name: Rename artifact
         shell: bash

@@ -28,11 +28,13 @@
 - 设备时长、解锁分桶、已有应用条目的时长和隐藏规则；
 - ContentProvider 配置接口、目标进程异步配置快照及变更监听；
 - 日志优先写所选 SAF 目录，失败回退私有目录；自动清理目前只覆盖私有目录中过期 7 天的日志；
-- Compose Miuix 配置界面；GitHub Actions 仅执行 `assembleDebug`。
+- Compose Miuix 配置界面；GitHub Actions 执行模型单元测试和 `assembleDebug`，不构建 Release。
 
 ## 待补证和已知限制
 
-- `DetailPageModel` 类正文尚未归档。目前 copy/getter 按运行时结构匹配，失败回退；需要完整 Smali（字段、构造、copy、getter）确定精确接口。
+- 已收到 `DetailPageModel`、`FunctionItem`、`e9.z`、`c9.f`、`c9.f$f` 的完整 Smali。`DetailPageModel.copy(VisualHealthDetails, ScreenTimeDetails, c9.b)` 及三个 getter 已精确确认；HostModels 按静态签名定位，不再按返回类型猜测 getter。H02 注册前检查接口，缺失时停用该点。
+- 10 个模型 copy 描述符已逐项对照 Smali；9 项 JVM 测试验证空值、副本隔离、额外重载、错误接口和 ClassLoader 隔离。这些是模块接口测试，不代表目标 APK 的实机验证。
+- 新证据表明“查看更多应用”点击进入 `e9.z` 后会通过 `c9.f$a` 重新创建 Intent 并传递 `range_index`、`day_tab`、`app_type`。仍缺 `c9.f$a` 及实际列表交付链，不能直接用 `c9.f$f` 的初始 Intent 推断完整覆盖。
 - 两个核心 Hook 不覆盖“查看更多应用”完整列表、单应用或分类深入详情，也不能为原列表中不存在的应用新增条目。
 - 日期/周期控制、快速切换请求的日期归属、跨日、缓存热命中及跨页面一致性尚未完成验收；不能仅凭桶数保证日/周/月语义正确。
 - 未填写分桶时，总值规则会把数值放在最后一个桶，其余桶归零。`firstTime` 和 `lastCycle` 仍保留原值，解锁首次时间可能与新分布不一致，后续需要修正。
@@ -57,7 +59,7 @@ Gradle 支持 `DEBUG_KEYSTORE_PATH`、`DEBUG_KEYSTORE_PASSWORD`、`DEBUG_KEY_ALI
 
 ## 后续验证顺序
 
-1. 补齐同版本 APK 的 `DetailPageModel`，核对复制接口，记录 LSPosed Manager/Framework 版本。
+1. `DetailPageModel` 复制接口已核对。接续读取 `c9.f$a`、`AppUsageLimitPage`、`AbsAppUsageLimitPage`，沿确切调用链定位列表交付点，并记录 LSPosed Manager/Framework 版本。
 2. 修正规则一致性和日志问题，生成对应 Debug 构建。
 3. 真机先保持总开关关闭，确认模块 App 启动、配置保存和宿主页面正常。
 4. 启用 LSPosed 作用域，按框架要求重启目标进程，检查 Hook 注册和命中日志。
