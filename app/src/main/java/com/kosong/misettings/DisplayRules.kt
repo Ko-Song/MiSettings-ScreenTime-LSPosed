@@ -14,9 +14,9 @@ object DisplayRules {
     private const val CHART_ITEM = "com.xiaomi.misettings.base.model.item.ChartItem"
     private const val APP_TOP4_ITEM = "com.xiaomi.misettings.base.model.item.AppTop4Item"
     private const val TOP4_PROGRESS_ITEM = "com.xiaomi.misettings.base.model.item.Top4ProgressItem"
-    private const val HOME_DEVICE_CHART = "c9.c$d"
-    private const val DETAIL_DEVICE_CHART = "c9.c$a"
-    private const val DETAIL_UNLOCK_CHART = "c9.c$e"
+    private val HOME_DEVICE_CHART = "c9.c" + '$' + "d"
+    private val DETAIL_DEVICE_CHART = "c9.c" + '$' + "a"
+    private val DETAIL_UNLOCK_CHART = "c9.c" + '$' + "e"
 
     fun transformHomeList(input: Any?, config: ModuleConfig, log: (String) -> Unit): Any? {
         if (!config.enabled || !config.applyHome || !isActive(config) || input !is List<*>) return input
