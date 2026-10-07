@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">屏幕统计</string>
+    <string name="module_description">仅覆盖小米设置健康使用手机页面的统计展示</string>
+</resources>
